@@ -8,4 +8,5 @@ SubInclude HAIKU_TOP src add-ons kernel drivers audio hda ;
 SubInclude HAIKU_TOP src add-ons kernel drivers audio ice1712 ;
 SubInclude HAIKU_TOP src add-ons kernel drivers audio module_driver ;
 SubInclude HAIKU_TOP src add-ons kernel drivers audio null ;
+SubInclude HAIKU_TOP src add-ons kernel drivers audio sbcompat ;
 SubInclude HAIKU_TOP src add-ons kernel drivers audio usb ;

@@ -1,0 +1,9 @@
+SubDir HAIKU_TOP src add-ons kernel drivers audio sbcompat ;
+
+SetSubDirSupportedPlatformsBeOSCompatible ;
+
+UsePrivateHeaders media ;
+
+KernelAddon sbcompat :
+	driver.cpp
+;

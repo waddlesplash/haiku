@@ -1,0 +1,14 @@
+# output sample rate in hertz (1...48000, default 11025)
+samplerate 11025
+
+# scan legacy devices for sb-ports (yes/no, default no)
+scan_legacy_devices no
+
+# never reset devices (yes/no, default no)
+skip_reset no
+
+# don't try using sb-compatible mixer (yes/no, default no)
+ignore_mixer no
+
+# break the silence (on/off, default off)
+debug_noise off
