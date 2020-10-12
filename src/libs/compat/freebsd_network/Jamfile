@@ -50,6 +50,12 @@ KernelStaticLibrary libfreebsd_network.a :
 	sysinit.c
 	taskqueue.c
 	unit.cpp
+
+	fbsd_usb_error.c
+	fbsd_usb_util.c
+	fbsd_usb_lookup.c
+	usb_util.c
+	usb_compat.cpp
 	;
 
 rule MIIHeaderGen
