@@ -27,10 +27,14 @@
 
 struct per_cpu_timer_data {
 	spinlock		lock;
+
+	bigtime_t		real_time_offset;
+
 	timer*			events;
 	timer*			current_event;
 	int32			current_event_in_progress;
-	bigtime_t		real_time_offset;
+
+	bigtime_t		scheduled_timer;
 };
 
 static per_cpu_timer_data sPerCPU[SMP_MAX_CPUS];
@@ -50,20 +54,28 @@ static per_cpu_timer_data sPerCPU[SMP_MAX_CPUS];
 	\param now The current system time.
 */
 static void
-set_hardware_timer(bigtime_t scheduleTime, bigtime_t now)
+set_hardware_timer(per_cpu_timer_data& cpuData, bigtime_t now)
 {
-	arch_timer_set_hardware_timer(scheduleTime > now ? scheduleTime - now : 0);
+	bigtime_t scheduleTime = cpuData.events->schedule_time;
+	if (scheduleTime > now) {
+		cpuData.scheduled_timer = scheduleTime;
+		scheduleTime -= now;
+	} else {
+		cpuData.scheduled_timer = 0;
+		scheduleTime = 0;
+	}
+	arch_timer_set_hardware_timer(scheduleTime);
 }
 
 
-/*!	Sets the hardware timer to the given absolute time.
+/*!	Sets the hardware timer to the first event's scheduled time.
 
 	\param scheduleTime The absolute system time for the timer expiration.
 */
 static inline void
-set_hardware_timer(bigtime_t scheduleTime)
+set_hardware_timer(per_cpu_timer_data& cpuData)
 {
-	set_hardware_timer(scheduleTime, system_time());
+	set_hardware_timer(cpuData, system_time());
 }
 
 
@@ -84,6 +96,18 @@ add_event_to_list(timer* event, timer** list)
 		previous->next = event;
 	else
 		*list = event;
+
+#if KDEBUG
+	timer* current = *list;
+	previous = NULL;
+	while (current != NULL) {
+		if (previous != NULL) {
+			ASSERT(current->schedule_time >= previous->schedule_time);
+		}
+		previous = current;
+		current = current->next;
+	}
+#endif
 }
 
 
@@ -148,7 +172,7 @@ per_cpu_real_time_clock_changed(void*, int cpu)
 
 	// If the first event has changed, reset the hardware timer.
 	if (firstEventChanged)
-		set_hardware_timer(cpuData.events->schedule_time);
+		set_hardware_timer(cpuData);
 }
 
 
@@ -252,7 +276,7 @@ timer_interrupt()
 	acquire_spinlock(spinlock);
 
 	timer* event = cpuData.events;
-	while (event != NULL && ((bigtime_t)event->schedule_time < system_time())) {
+	while (event != NULL && ((bigtime_t)event->schedule_time <= system_time())) {
 		// this event needs to happen
 		int mode = event->flags;
 
@@ -298,7 +322,7 @@ timer_interrupt()
 
 	// setup the next hardware timer
 	if (cpuData.events != NULL)
-		set_hardware_timer(cpuData.events->schedule_time);
+		set_hardware_timer(cpuData);
 
 	release_spinlock(spinlock);
 
@@ -351,7 +375,7 @@ add_timer(timer* event, timer_hook hook, bigtime_t period, int32 flags)
 
 	// if we were stuck at the head of the list, set the hardware timer
 	if (event == cpuData.events)
-		set_hardware_timer(event->schedule_time, currentTime);
+		set_hardware_timer(cpuData, currentTime);
 
 	return B_OK;
 }
@@ -387,6 +411,22 @@ cancel_timer(timer* event)
 		timer* current = cpuData.events;
 		timer* previous = NULL;
 
+#if KDEBUG
+		if (cpu == smp_get_current_cpu()) {
+			current = cpuData.events;
+			previous = NULL;
+			while (current != NULL) {
+				if (previous != NULL) {
+					ASSERT(current->schedule_time >= previous->schedule_time);
+				}
+				previous = current;
+				current = current->next;
+			}
+		}
+		current = cpuData.events;
+		previous = NULL;
+#endif
+
 		while (current != NULL) {
 			if (current == event) {
 				// we found it
@@ -415,10 +455,12 @@ cancel_timer(timer* event)
 		// But it seems adding that causes problems on some systems, possibly due to
 		// some other bug. For now, just reset the hardware timer on every cancellation.
 		if (cpu == smp_get_current_cpu()) {
+			ASSERT(previous == NULL || cpuData.scheduled_timer == 0 || cpuData.events == NULL
+				|| cpuData.events->schedule_time >= cpuData.scheduled_timer);
 			if (cpuData.events == NULL)
 				arch_timer_clear_hardware_timer();
 			else
-				set_hardware_timer(cpuData.events->schedule_time);
+				set_hardware_timer(cpuData);
 		}
 
 		return false;
